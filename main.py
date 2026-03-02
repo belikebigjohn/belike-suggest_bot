@@ -3,8 +3,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import TOKEN, ADMIN_IDS, CHANNEL_ID
 
 #TOKEN = ""
-#ADMIN_IDS =
-#CHANNEL_ID =
+#ADMIN_IDS = []
+#CHANNEL_ID = -100
 
 bot = telebot.TeleBot(TOKEN)
 
