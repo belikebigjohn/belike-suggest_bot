@@ -12,18 +12,20 @@ bot = telebot.TeleBot(TOKEN)
 pending_posts = {}
 # храним все message_id одной предложки для удаления кнопок у всех админов
 post_admin_messages = {}  # user_id -> [message_id1, message_id2, ...]
+# пользователи, которые в режиме отправки (после /start)
+waiting_users = {}  # user_id -> True
 
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
+    waiting_users[message.from_user.id] = True
     bot.send_message(message.chat.id,
                      "Привет, есть что отправить в группу?\nБот анонимно отправит фото/видео/текст в группу, не выдавая твою личность.")
     bot.send_message(message.chat.id, "Приступим?\nОтправь фото/видео с подписью или просто текст.")
 
-@bot.message_handler(content_types=['photo', 'video', 'text'])
-def handle_user_submission(message):
-    # если текст — проверяем что не команда
-    if message.text and message.text.startswith('/'):
+@bot.message_handler(content_types=['photo', 'video'])
+def handle_media_submission(message):
+    if message.from_user.id not in waiting_users:
         return
 
     user = message.from_user
@@ -38,7 +40,7 @@ def handle_user_submission(message):
         if not caption:
             bot.reply_to(message, "Добавь текст к фото (одним сообщением)")
             return
-    elif message.video:
+    else:  # video
         file_id = message.video.file_id
         media_type = "video"
         send_method = bot.send_video
@@ -46,13 +48,30 @@ def handle_user_submission(message):
         if not caption:
             bot.reply_to(message, "Добавь текст к видео (одним сообщением)")
             return
-    else:
-        # только текст
-        media_type = "text"
-        file_id = None
-        send_method = None
-        caption = message.text
 
+    send_post(user, username, media_type, file_id, caption)
+
+
+@bot.message_handler(content_types=['text'])
+def handle_text_submission(message):
+    if message.from_user.id not in waiting_users:
+        return
+
+    # если текст — проверяем что не команда
+    if message.text.startswith('/'):
+        return
+
+    user = message.from_user
+    username = user.username or f"id{user.id}"
+
+    media_type = "text"
+    file_id = None
+    caption = message.text
+
+    send_post(user, username, media_type, file_id, caption)
+
+
+def send_post(user, username, media_type, file_id, caption):
     # кнопки
     markup = InlineKeyboardMarkup()
     markup.add(
@@ -73,22 +92,18 @@ def handle_user_submission(message):
                     reply_markup=markup
                 )
             else:
-                sent_message = send_method(
-                    admin_id,
-                    file_id,
-                    caption=caption_for_admins,
-                    reply_markup=markup
-                )
+                sent_message = bot.send_photo(admin_id, file_id, caption=caption_for_admins, reply_markup=markup) if media_type == "photo" else bot.send_video(admin_id, file_id, caption=caption_for_admins, reply_markup=markup)
             admin_message_ids.append((admin_id, sent_message.message_id))
-            # запоминаем
             pending_posts[sent_message.message_id] = (user.id, media_type, file_id, caption)
         except Exception as e:
             print(f"Не удалось отправить админу {admin_id}: {e}")
 
-    # сохраняем связь user_id -> message_ids для удаления кнопок у всех
     post_admin_messages[user.id] = admin_message_ids
 
-    bot.reply_to(message, "Отправлено")
+    # убираем пользователя из режима ожидания
+    waiting_users.pop(user.id, None)
+
+    bot.send_message(user.id, "Отправлено")
 
 
 @bot.callback_query_handler(func=lambda query: True)
