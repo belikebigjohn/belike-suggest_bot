@@ -12,22 +12,34 @@ bot = telebot.TeleBot(TOKEN)
 pending_posts = {}
 # храним все message_id одной предложки для удаления кнопок у всех админов
 post_admin_messages = {}  # user_id -> [message_id1, message_id2, ...]
-# пользователи, которые в режиме отправки (после /start)
-waiting_users = {}  # user_id -> True
 
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    waiting_users[message.from_user.id] = True
     bot.send_message(message.chat.id,
                      "Привет, есть что отправить в группу?\nБот анонимно отправит фото/видео/текст в группу, не выдавая твою личность.")
     bot.send_message(message.chat.id, "Приступим?\nОтправь фото/видео с подписью или просто текст.")
 
-@bot.message_handler(content_types=['photo', 'video'])
-def handle_media_submission(message):
-    if message.from_user.id not in waiting_users:
+
+@bot.message_handler(commands=['send'])
+def handle_send_text(message):
+    bot.send_message(message.chat.id, "Отправь текст, который хочешь опубликовать:")
+    bot.register_next_step_handler(message, process_text_submission)
+
+
+def process_text_submission(message):
+    if not message.text:
+        bot.send_message(message.chat.id, "Отправлен не текст. Попробуй ещё раз командой /send")
         return
 
+    user = message.from_user
+    username = user.username or f"id{user.id}"
+
+    send_post(user, username, "text", None, message.text)
+
+
+@bot.message_handler(content_types=['photo', 'video'])
+def handle_media_submission(message):
     user = message.from_user
     username = user.username or f"id{user.id}"
 
@@ -51,24 +63,6 @@ def handle_media_submission(message):
 
     send_post(user, username, media_type, file_id, caption)
 
-
-@bot.message_handler(content_types=['text'])
-def handle_text_submission(message):
-    if message.from_user.id not in waiting_users:
-        return
-
-    # если текст — проверяем что не команда
-    if message.text.startswith('/'):
-        return
-
-    user = message.from_user
-    username = user.username or f"id{user.id}"
-
-    media_type = "text"
-    file_id = None
-    caption = message.text
-
-    send_post(user, username, media_type, file_id, caption)
 
 
 def send_post(user, username, media_type, file_id, caption):
@@ -99,9 +93,6 @@ def send_post(user, username, media_type, file_id, caption):
             print(f"Не удалось отправить админу {admin_id}: {e}")
 
     post_admin_messages[user.id] = admin_message_ids
-
-    # убираем пользователя из режима ожидания
-    waiting_users.pop(user.id, None)
 
     bot.send_message(user.id, "Отправлено")
 
