@@ -189,7 +189,7 @@ def send_post(user, username, media_type, file_id, caption):
 
 
 def send_album_post(user, username, media_list, caption):
-    """Отправка альбома админам ОДНИМ сообщением через MediaGroup"""
+    """Отправка альбома админам: альбом + сообщение с кнопками"""
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("✅", callback_data=f"approve_{user.id}"),
@@ -198,14 +198,13 @@ def send_album_post(user, username, media_list, caption):
 
     caption_for_admins = f"Предложка от @{username}\n\n{caption}"
 
-    # Формируем MediaGroup
     admin_message_ids = []
     for admin_id in ADMIN_IDS:
         try:
+            # Формируем MediaGroup
             media_group = []
             for i, (media_type, file_id) in enumerate(media_list):
                 if i == 0:
-                    # Первый элемент с подписью
                     if media_type == "photo":
                         media_group.append(types.InputMediaPhoto(file_id, caption=caption_for_admins))
                     elif media_type == "video":
@@ -215,7 +214,6 @@ def send_album_post(user, username, media_list, caption):
                     elif media_type == "audio":
                         media_group.append(types.InputMediaAudio(file_id, caption=caption_for_admins))
                 else:
-                    # Остальные элементы без подписи
                     if media_type == "photo":
                         media_group.append(types.InputMediaPhoto(file_id))
                     elif media_type == "video":
@@ -224,20 +222,23 @@ def send_album_post(user, username, media_list, caption):
                         media_group.append(types.InputMediaDocument(file_id))
                     elif media_type == "audio":
                         media_group.append(types.InputMediaAudio(file_id))
-            
-            # Отправляем медиагруппу (одним сообщением)
-            if media_group:
-                sent_messages = bot.send_media_group(admin_id, media_group)
-                first_msg_id = sent_messages[0].message_id
-                
-                # Добавляем кнопки к первому сообщению
-                try:
-                    bot.edit_message_reply_markup(admin_id, first_msg_id, reply_markup=markup)
-                except:
-                    pass
-                
-                admin_message_ids.extend([(admin_id, msg.message_id) for msg in sent_messages])
-                pending_posts[first_msg_id] = (user.id, "album", media_list, caption)
+
+            # 1. Отправляем альбом (без кнопок — API не поддерживает)
+            sent_album = bot.send_media_group(admin_id, media_group)
+
+            # 2. Сразу под ним — сообщение с кнопками
+            btn_message = bot.send_message(
+                admin_id,
+                "Одобрить или отклонить?",
+                reply_markup=markup
+            )
+
+            msg_ids = [(admin_id, msg.message_id) for msg in sent_album]
+            msg_ids.append((admin_id, btn_message.message_id))
+            admin_message_ids.extend(msg_ids)
+
+            # Сохраняем: id сообщения с кнопками -> данные предложки
+            pending_posts[btn_message.message_id] = (user.id, "album", media_list, caption)
         except Exception as e:
             print(f"Не удалось отправить альбом админу {admin_id}: {e}")
 
