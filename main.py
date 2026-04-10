@@ -108,7 +108,7 @@ def handle_album_media(message, user, username):
             'chat_id': message.chat.id,
             'first_message_id': message.message_id
         }
-    
+        
     # Добавляем медиа
     if message.photo:
         file_id = message.photo[-1].file_id
@@ -182,7 +182,9 @@ def send_post(user, username, media_type, file_id, caption):
 
     post_admin_messages[user.id] = admin_message_ids
 
-    bot.send_message(user.id, "✅ Отправлено на модерацию")
+    bot.send_message(user.id, "✅ Отправлено на модерацию\n\nДля новой отправки снова нажми /start")
+    # Убираем пользователя из активных - для следующей отправки нужно снова нажать /start
+    active_users.discard(user.id)
 
 
 def send_album_post(user, username, media_list, caption):
@@ -223,7 +225,7 @@ def send_album_post(user, username, media_list, caption):
                         bot.send_document(admin_id, file_id)
                     elif media_type == "audio":
                         bot.send_audio(admin_id, file_id)
-            
+
             if sent_messages:
                 admin_message_ids.extend(sent_messages)
         except Exception as e:
@@ -231,7 +233,9 @@ def send_album_post(user, username, media_list, caption):
 
     post_admin_messages[user.id] = admin_message_ids
 
-    bot.send_message(user.id, "✅ Отправлено на модерацию")
+    bot.send_message(user.id, "✅ Отправлено на модерацию\n\nДля новой отправки снова нажми /start")
+    # Убираем пользователя из активных - для следующей отправки нужно снова нажать /start
+    active_users.discard(user.id)
 
 
 @bot.callback_query_handler(func=lambda query: True)
