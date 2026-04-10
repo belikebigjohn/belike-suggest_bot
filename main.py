@@ -1,5 +1,6 @@
 import telebot
 import threading
+from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import TOKEN, ADMIN_IDS, CHANNEL_ID
 
@@ -188,7 +189,7 @@ def send_post(user, username, media_type, file_id, caption):
 
 
 def send_album_post(user, username, media_list, caption):
-    """Отправка альбома админам"""
+    """Отправка альбома админам ОДНИМ сообщением через MediaGroup"""
     markup = InlineKeyboardMarkup()
     markup.add(
         InlineKeyboardButton("✅", callback_data=f"approve_{user.id}"),
@@ -197,44 +198,52 @@ def send_album_post(user, username, media_list, caption):
 
     caption_for_admins = f"Предложка от @{username}\n\n{caption}"
 
-    # Отправляем первый элемент с кнопками и подписью, остальные без
+    # Формируем MediaGroup
     admin_message_ids = []
     for admin_id in ADMIN_IDS:
         try:
-            sent_messages = []
+            media_group = []
             for i, (media_type, file_id) in enumerate(media_list):
                 if i == 0:
-                    # Первый элемент с кнопками и подписью
+                    # Первый элемент с подписью
                     if media_type == "photo":
-                        sent = bot.send_photo(admin_id, file_id, caption=caption_for_admins, reply_markup=markup)
+                        media_group.append(types.InputMediaPhoto(file_id, caption=caption_for_admins))
                     elif media_type == "video":
-                        sent = bot.send_video(admin_id, file_id, caption=caption_for_admins, reply_markup=markup)
+                        media_group.append(types.InputMediaVideo(file_id, caption=caption_for_admins))
                     elif media_type == "document":
-                        sent = bot.send_document(admin_id, file_id, caption=caption_for_admins, reply_markup=markup)
+                        media_group.append(types.InputMediaDocument(file_id, caption=caption_for_admins))
                     elif media_type == "audio":
-                        sent = bot.send_audio(admin_id, file_id, caption=caption_for_admins, reply_markup=markup)
-                    sent_messages.append((admin_id, sent.message_id))
-                    pending_posts[sent.message_id] = (user.id, "album", media_list, caption)
+                        media_group.append(types.InputMediaAudio(file_id, caption=caption_for_admins))
                 else:
-                    # Остальные элементы без кнопок
+                    # Остальные элементы без подписи
                     if media_type == "photo":
-                        bot.send_photo(admin_id, file_id)
+                        media_group.append(types.InputMediaPhoto(file_id))
                     elif media_type == "video":
-                        bot.send_video(admin_id, file_id)
+                        media_group.append(types.InputMediaVideo(file_id))
                     elif media_type == "document":
-                        bot.send_document(admin_id, file_id)
+                        media_group.append(types.InputMediaDocument(file_id))
                     elif media_type == "audio":
-                        bot.send_audio(admin_id, file_id)
-
-            if sent_messages:
-                admin_message_ids.extend(sent_messages)
+                        media_group.append(types.InputMediaAudio(file_id))
+            
+            # Отправляем медиагруппу (одним сообщением)
+            if media_group:
+                sent_messages = bot.send_media_group(admin_id, media_group)
+                first_msg_id = sent_messages[0].message_id
+                
+                # Добавляем кнопки к первому сообщению
+                try:
+                    bot.edit_message_reply_markup(admin_id, first_msg_id, reply_markup=markup)
+                except:
+                    pass
+                
+                admin_message_ids.extend([(admin_id, msg.message_id) for msg in sent_messages])
+                pending_posts[first_msg_id] = (user.id, "album", media_list, caption)
         except Exception as e:
             print(f"Не удалось отправить альбом админу {admin_id}: {e}")
 
     post_admin_messages[user.id] = admin_message_ids
 
     bot.send_message(user.id, "✅ Отправлено на модерацию\n\nДля новой отправки снова нажми /start")
-    # Убираем пользователя из активных - для следующей отправки нужно снова нажать /start
     active_users.discard(user.id)
 
 
@@ -274,29 +283,33 @@ def handle_admin_decision(query):
     if action == "approve":
         try:
             if media_type == "album":
-                # Публикация альбома
+                # Публикация альбома ОДНИМ сообщением через MediaGroup
                 media_list = media_data
+                media_group = []
                 for i, (item_type, file_id) in enumerate(media_list):
                     if i == 0:
                         # Первый элемент с подписью
                         if item_type == "photo":
-                            bot.send_photo(CHANNEL_ID, file_id, caption=post_text)
+                            media_group.append(types.InputMediaPhoto(file_id, caption=post_text))
                         elif item_type == "video":
-                            bot.send_video(CHANNEL_ID, file_id, caption=post_text)
+                            media_group.append(types.InputMediaVideo(file_id, caption=post_text))
                         elif item_type == "document":
-                            bot.send_document(CHANNEL_ID, file_id, caption=post_text)
+                            media_group.append(types.InputMediaDocument(file_id, caption=post_text))
                         elif item_type == "audio":
-                            bot.send_audio(CHANNEL_ID, file_id, caption=post_text)
+                            media_group.append(types.InputMediaAudio(file_id, caption=post_text))
                     else:
                         # Остальные элементы без подписи
                         if item_type == "photo":
-                            bot.send_photo(CHANNEL_ID, file_id)
+                            media_group.append(types.InputMediaPhoto(file_id))
                         elif item_type == "video":
-                            bot.send_video(CHANNEL_ID, file_id)
+                            media_group.append(types.InputMediaVideo(file_id))
                         elif item_type == "document":
-                            bot.send_document(CHANNEL_ID, file_id)
+                            media_group.append(types.InputMediaDocument(file_id))
                         elif item_type == "audio":
-                            bot.send_audio(CHANNEL_ID, file_id)
+                            media_group.append(types.InputMediaAudio(file_id))
+                
+                if media_group:
+                    bot.send_media_group(CHANNEL_ID, media_group)
             elif media_type == "photo":
                 bot.send_photo(CHANNEL_ID, media_data, caption=post_text)
             elif media_type == "video":
